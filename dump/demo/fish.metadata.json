@@ -1,0 +1,1 @@
+{"options":{},"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_","ns":"demo.fish"},{"v":{"$numberInt":"2"},"unique":true,"key":{"extId":{"$numberInt":"1"}},"name":"extId_1","background":true,"ns":"demo.fish"}],"uuid":"9ac4096b231a41188f45aeb7e1c2a101"}

@@ -1,0 +1,103 @@
+@charset "UTF-8";
+/* CSS Document */
+
+.cp-container {
+	position: relative;
+	display: table-cell;
+	border-radius: 25px;
+	width: 50px;
+	height: 50px;
+	overflow: hidden;
+	text-align: center;
+	vertical-align: middle;
+	color: #4C7298;
+}
+.cp-container i {
+	position: relative;
+	z-index: 200;
+	font-size: 1.5em;
+	pointer-events: none;
+}
+.cp-container .fa-play {
+	left: 2px;
+}
+
+
+.cp-background {
+	background: #4C7298;
+	position: absolute;
+	top: 0px;
+	left: 0px;
+	width:50px;
+	height:50px;
+	border-radius: 25px;
+	overflow: hidden;
+}
+.cp-loading-more-than-half {
+	position: absolute;
+	top: 0px;
+	right: 0px;
+	background: #4C7298;
+	width: 25px;
+	height: 50px;
+	display: none;
+	pointer-events: none;
+}
+.cp-loading-border-container {
+	position: absolute;
+	top: 0px;
+	left: 0px;
+	width: 50px;
+	height: 50px;
+	clip: rect(0px, 50px, 50px, 25px);
+	overflow: hidden;
+	pointer-events: none;
+}
+.cp-loading-border {
+	position: absolute;
+	top: 0px;
+	background: #4C7298;
+	width: 50%;
+	height: 100%;
+	transform-origin: 100% 50%;
+	transform: rotate(0deg);
+	pointer-events: none;
+}
+.cp-more-than-half {
+	position: absolute;
+	top: 0px;
+	right: 0px;
+	background: lightgray;
+	width: 25px;
+	height: 50px;
+	display: none;
+	pointer-events: none;
+}
+.cp-border-container {
+	position: absolute;
+	top: 0px;
+	left: 0px;
+	width: 50px;
+	height: 50px;
+	clip: rect(0px, 50px, 50px, 25px);
+	overflow: hidden;
+	pointer-events: none;
+}
+.cp-border {
+	position: absolute;
+	top: 0px;
+	background: lightgray;
+	width: 50%;
+	height: 100%;
+	transform-origin: 100% 50%;
+	transform: rotate(0deg);
+	pointer-events: none;
+}
+.cp-fill {
+	position: absolute;
+	background: white;
+	top: 5px; left: 5px;
+	border-radius: 20px;
+	width: 40px;
+	height: 40px;
+}
