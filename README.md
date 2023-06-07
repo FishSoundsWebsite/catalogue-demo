@@ -2,7 +2,7 @@
 
 This repository contains the code used to create the website [FishSounds](https://fishsounds.net), an online catalogue of research and recordings related to the noises that fish make. In line with FAIR principles, this code has been made publicly available so it may be reused by others with similar data and product goals.
 
-A second version of this website, which includes user accounts and forms for data upload, is currently under development. Once complete, this public repository will be bulk-updated with the resulting additions and changes. Bug reports on this repository will be periodically checked and may be incorporated into this large release, but submissions will not be actively monitored or prioritized at this time.
+This repo currently offers the outdated Version 1 of the catalogue code, and does not have numerous feature additions and bug fixes present in the live catalgoue. Updates will be made to this code base when v2.1 of the live catalogue launches in late 2023.
 
 Note that if you are seeking the data used in FishSounds (rather than the code), it is available for bulk download through [Dataverse](https://doi.org/10.5683/SP2/TACOUX).
 
