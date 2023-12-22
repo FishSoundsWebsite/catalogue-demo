@@ -9,6 +9,7 @@ var referenceSchema = require('./reference.js');
 var recordingSchema = require('./recording.js');
 
 var observationSchema = new Schema({
+	publicId: 		String,
 	fishId: 		ObjectId,
 	refId: 			ObjectId,
 	detection:		Boolean,
@@ -17,6 +18,8 @@ var observationSchema = new Schema({
 	physiological:	Number,
 	audio:			Boolean,
 	visual:			Boolean,
+	altName:		String,
+	editorNotes:	String,
 	fullDesc: 		String,
 	behaviours:		[{
 						behaviour:	ObjectId,
@@ -34,7 +37,8 @@ var observationSchema = new Schema({
 						noise:			ObjectId,
 						context:		String
 					}],
-	noiseNotes:		String
+	noiseNotes:		String,
+	status:			{type: String},
 });
 
 var rec = mongoose.model('Observation',observationSchema);
@@ -44,82 +48,93 @@ exports.record = rec;
 // given an object of search parameters (e.g. {fishId: xxx}, {_id: xxx}), returns an object with human readable values
 // params is used instead of _id to increase function flexibility
 // called by the fish and reference routes in app.js
-exports.read = async function(params){
-	var query = await rec.find(params).exec();
-	var results = [];
-	for(var i = 0; i < query.length; i++){
-		var info = {};
+exports.read = async function(params = {}){
+	params["status"] = {"$in":["Active"]};
 	
-		if(query[i].detection){ info.detection = query[i].detection; }
-		if(query[i].detectionDoubt){ info.detectionDoubt = query[i].detectionDoubt; }
-		if(query[i].speciesDoubt){ info.speciesDoubt = query[i].speciesDoubt; }
-		if(query[i].physiological){ info.physiological = query[i].physiological; }
-		if(query[i].visual){ info.visual = query[i].visual; }
-		if(query[i].audio){ info.audio = query[i].audio; }
-		if(query[i].fullDesc){ info.fullDesc = query[i].fullDesc; }
-		if(query[i].behaviourNotes){ info.behaviourNotes = query[i].behaviourNotes; }
-		if(query[i].environmentNotes){ info.environmentNotes = query[i].environmentNotes; }
-		if(query[i].noiseNotes){ info.noiseNotes = query[i].noiseNotes; }
-	
-		if(query[i].behaviours && query[i].behaviours.length > 0){
-			var behaviours = [];
-			for(var j = 0; j < query[i].behaviours.length; j++){
-				var o = {};
-				o.behaviour = await termSchema.read(query[i].behaviours[j].behaviour);
-				o.context = query[i].behaviours[j].context;
-				behaviours.push(o);
-			}
-			info.behaviours = behaviours;
-		}
-	
-		if(query[i].sources && query[i].sources.length > 0){
-			var sources = [];
-			for(var j = 0; j < query[i].sources.length; j++){
-				var o = {};
-				o.source = await termSchema.read(query[i].sources[j].source);
-				o.doubt = query[i].sources[j].doubt;
-				sources.push(o);
-			}
-			info.sources = sources;
-		}
-	
-		if(query[i].noises){
-			var noises = [];
-			for(var j = 0; j < query[i].noises.length; j++){
-				var o = {};
+	var query = await rec.aggregate()
+						.lookup({ from: 'fish', localField: 'fishId', foreignField: '_id', as: 'fish' })
+						.unwind('fish')
+						.lookup({ from: 'references', localField: 'refId', foreignField: '_id', as: 'reference' })
+						.unwind('reference')
+						.match(params)
+						.lookup({ from: 'terms', localField: 'environments', foreignField: '_id', as: 'environments' })
+						.unwind({path:'$environments',preserveNullAndEmptyArrays: true})
+						.lookup({ from: 'terms', localField: 'diagrams', foreignField: '_id', as: 'diagrams' })
+						.unwind({path:'$diagrams',preserveNullAndEmptyArrays: true})
+						.lookup({ from: 'terms', localField: 'behaviours.behaviour', foreignField: '_id', as: 'behaviourLabels' })
+						.lookup({ from: 'terms', localField: 'noises.noise', foreignField: '_id', as: 'noiseLabels' })
+						.lookup({ from: 'terms', localField: 'sources.source', foreignField: '_id', as: 'sourceLabels' })
+						.group({
+							_id:"$publicId",
+							fish:{$first:"$fish"},
+							reference:{$first:"$reference"},
+							altName:{$first:"$altName"},
+							editorNotes:{$first:"$editorNotes"},
+							speciesDoubt:{$first:"$speciesDoubt"},
+							detection:{$first:"$detection"},
+							detectionDoubt:{$first:"$detectionDoubt"},
+							physiological:{$first:"$physiological"},
+							audio:{$first:"$audio"},
+							visual:{$first:"$visual"},
+							fullDesc:{$first:"$fullDesc"},
+							environmentNotes:{$first:"$environmentNotes"},
+							behaviourNotes:{$first:"$behaviourNotes"},
+							noiseNotes:{$first:"$noiseNotes"},
+							diagrams:{$first:"$diagrams"},
+							environments:{$first:"$environments"},
+							behaviours:{$first:"$behaviours"},
+							noises:{$first:"$noises"},
+							sources:{$first:"$sources"}
+						})
+						.project({
+							_id:1,
+							fish:{publicId:'$fish.publicId',title:'$fish.title'},
+							reference:{publicId:'$reference.publicId',refLong:'$reference.refLong'},
+							altName:1,
+							editorNotes:1,
+							speciesDoubt:1,
+							detection:1,
+							detectionDoubt:1,
+							physiological:1,
+							audio:1,
+							visual:1,
+							fullDesc:1,
+							environmentNotes:1,
+							behaviourNotes:1,
+							noiseNotes:1,
+							diagrams:'$diagrams.term',
+							environments:'$environments.term',
+							behaviours:{ "$map":{ input:"$behaviours", in:{
+								"$let":{
+									vars:{ m:{ "$arrayElemAt":[ { "$filter":{
+											input: "$behaviourLabels",
+											cond:{ "$eq":[ "$$mb._id","$$this.behaviour" ] },
+											as: "mb"
+										}}, 0 ]}},
+									in:{ "$mergeObjects":[ { context: "$$this.context" }, { "behaviour": "$$m.term" }]}
+								}
+							}}},
+							noises:{ "$map":{ input:"$noises", in:{
+								"$let":{
+									vars:{ m:{ "$arrayElemAt":[ { "$filter":{
+											input: "$noiseLabels",
+											cond:{ "$eq":[ "$$mb._id","$$this.noise" ] },
+											as: "mb"
+										}}, 0 ]}},
+									in:{ "$mergeObjects":[ { context: "$$this.context" }, { "noise": "$$m.term" }]}
+								}
+							}}},
+							sources:{ "$map":{ input:"$sources", in:{
+								"$let":{
+									vars:{ m:{ "$arrayElemAt":[ { "$filter":{
+											input: "$sourceLabels",
+											cond:{ "$eq":[ "$$mb._id","$$this.source" ] },
+											as: "mb"
+										}}, 0 ]}},
+									in:{ "$mergeObjects":[ { doubt: "$$this.doubt" }, { "source": "$$m.term" }]}
+								}
+							}}}
+						});
 
-				o.noise = await termSchema.read(query[i].noises[j].noise);
-				if(query[i].noises[j].context){ o.context = query[i].noises[j].context; }
-
-				noises.push(o);
-			}
-			info.noises = noises;
-		}
-
-		if(query[i].environments){ info.environments = await termSchema.read(query[i].environments); }
-		if(query[i].diagrams){ info.diagrams = await termSchema.read(query[i].diagrams); }
-	
-		if(query[i].fishId){ info.fish = await fishSchema.read(query[i].fishId); }
-		if(query[i].refId){ info.reference = await referenceSchema.read(query[i].refId); }
-		
-		results.push(info);
-	}
-	
-	return results;
-}
-
-//returns the system ID of the fish referenced in the last entered observation record
-//used to populate site statistics
-//called by the index route in app.js
-exports.getLatest = async function(){
-	var query = await rec.find({}, null, {limit: 1, sort: {'epoch': -1}}).exec();
-	return query[0].fishId;
-}
-
-//returns an integer counting the number of observed fish species in the database
-//used to populate site statistics
-//called by the index route in app.js
-exports.getCount = async function(){
-	var query = await rec.distinct('fishId').exec();
-	return query.length;
+	return query;
 }

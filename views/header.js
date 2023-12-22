@@ -27,13 +27,13 @@ exports.display = async function(filename,data){
 			<link rel="stylesheet" href="public/libraries/chosen/chosen.min.css" type="text/css">
 			<script type="text/javascript" src="public/libraries/chosen/chosen.jquery.min.js"></script>
 		
-		<!-- circle player -->
+		<!-- circle player (media player library) -->
 			<link rel="stylesheet" href="public/libraries/circle-player/circle-player.css" type="text/css">
 			<script type="text/javascript" src="public/libraries/circle-player/circle-player.js"></script>
 
 		<!-- custom -->	
-			<link href="./public/general.css" rel="stylesheet" type="text/css">
-			<script src="./public/general.js"></script>
+			<link href="./public/general-nocache.css" rel="stylesheet" type="text/css">
+			<script src="./public/general-nocache.js"></script>
 		
 			<title>Title</title>
 		</head>
@@ -42,7 +42,13 @@ exports.display = async function(filename,data){
 			  <nav class="navbar navbar-expand-lg row justify-content-between px-3 py-0">
 				<div class="col-lg-4 col-11 m-0 p-0">
 					<a class="navbar-brand logoImgAnchor nude" href="./index.js">
-						<div id="logoImgHolder" class="col-4 m-0 p-0 pe-2 d-xl-table-cell d-lg-none d-table-cell"><img alt="logo - links to index" id="logoImg" class="col-12 pt-1 p-0 m-auto d-xl-block d-lg-none d-block" src="./public/siteLogo.png" role="link"></div>
+						<div id="logoImgHolder" class="col-4 m-0 p-0 pe-2 d-xl-table-cell d-lg-none d-table-cell">
+							<picture>
+							  <source class="col-12 pt-1 p-0 m-auto d-xl-block d-lg-none d-block" srcset="./public/siteLogo-dark.png" media="(prefers-color-scheme:dark)">
+							  <img alt="logo - links to index" id="logoImg" class="col-12 pt-1 p-0 m-auto d-xl-block d-lg-none d-block" src="./public/siteLogo.png" role="link">
+							</picture>
+						</div>
+						
 						<h1 id='siteTitle' class="col-8 m-0 d-table-cell">Title</h1>
 					</a>
 				</div>
@@ -52,12 +58,11 @@ exports.display = async function(filename,data){
 				</button>
 				<div class="col-lg-6 col-12 m-0 p-0">
 					<div class="collapse navbar-collapse" id="navbarContent">
-						<ul class="navbar-nav row justify-content-end col pe-2">
+						<ul class="navbar-nav row justify-content-end col pe-5">
 							<li class="dropdown col-lg-auto col-12 mb-md-1 mb-2 mx-0 px-1">
 								<button id="aboutDropdown" class="dropdown-toggle btn nav-item" role="button" data-bs-toggle="dropdown" aria-expanded="false">Learn More</button>
 								<ul class="dropdown-menu" aria-labelledby="aboutDropdown">
-									<li><a class="dropdown-item" href="./about.js">About Us</a></li>
-									<li><a class="dropdown-item" href="./how-to-cite.js">How to Cite</a></li>
+									<li><a class="dropdown-item" href="./about.js">About Demo</a></li>
 								</ul>
 							</li>
 							<li class="dropdown col-lg-auto col-12 mb-md-1 mb-2 mx-0 px-1">
@@ -66,14 +71,6 @@ exports.display = async function(filename,data){
 									<li><a class="dropdown-item" href="./results-fish.js">Fish Species</a></li>
 									<li><a class="dropdown-item" href="./results-references.js">Research Summaries</a></li>
 									<li><a class="dropdown-item" href="./results-recordings.js">Sound Recordings</a></li>
-								</ul>
-							</li>
-							<li class="dropdown col-lg-auto col-12 mb-md-1 mb-2 mx-0 px-1">
-								<button id="aboutDropdown" class="dropdown-toggle btn nav-item inactive" role="button" data-bs-toggle="dropdown" aria-expanded="false" title="Coming soon!">Profile</button>
-								<ul class="dropdown-menu dropdown-menu-end" aria-labelledby="aboutDropdown">
-									<li><a class="dropdown-item disabled" href="./login.js" aria-disabled="true">Create Account/Login</a></li>
-									<li><a class="dropdown-item disabled" href="./form-reference.js" aria-disabled="true">Submit Reference</a></li>
-									<li><a class="dropdown-item disabled" href="./form-recording.js" aria-disabled="true">Submit Recording</a></li>
 								</ul>
 							</li>
 						</ul>
@@ -88,11 +85,7 @@ exports.display = async function(filename,data){
 
 	content += `<footer id="footer" class="container-fluid" role="banner">
 			<div class="row align-items-center">
-			  <div class="col-md-4">
-				<img alt="funder logo" class="funderImg mx-auto d-block" src="./public/funderLogo.png">
-			  </div>
-			  <div class="col-md-4"><p class="fullWidth center"><a href="./how-to-cite.js">How to Cite</a></p></div>
-			  <div class="col-md-4 text-center">
+			  <div class="col text-center">
 				<p class="citation"><a rel="license" href="http://creativecommons.org/licenses/by-nc/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-nc/4.0/88x31.png"/></a><br/>This work is licensed under a<br/><a rel="license" href="http://creativecommons.org/licenses/by-nc/4.0/">Creative Commons Attribution-NonCommercial 4.0 International License</a></p>
 			  </div>
 			</div>

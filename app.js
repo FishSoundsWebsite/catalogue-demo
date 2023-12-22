@@ -21,24 +21,36 @@ global.navigator = { userAgent: 'nodejs', platform: 'nodejs' }
 //parses submitted url, directs/processes data accordingly and returns the page content
 app.use(async function(req,res){
 	var q = url.parse(req.url, true);
-	console.log(q.pathname);
+	
 	// allows elements in the /public/ folder to be accessible to other functions/pages
 	if(q.pathname.match(/^\/public\/(.*)/)){
 		fs.readFile('.' + q.pathname, function (err, data) {
 			if (err){
 				console.log(err);
+				res.writeHead(200, {'Content-Type': 'text/html'});
+				res.write("Image Missing");
 				res.end();
 			}else{
+				if(!q.pathname.match(/nocache/)){
+					res.setHeader('Cache-Control', 'max-age=100800');
+				}
 				var suffix = q.pathname.split(".");
 				switch(suffix[suffix.length - 1]){
 					case 'js':
+						res.setHeader('Content-Type', 'text/javascript');
 						res.writeHead(200, {'Content-Type': 'text/javascript'});
 						break;
 					case 'png':
 					case 'jpg':
+						res.setHeader('Content-Type', 'image/' + suffix[suffix.length - 1]);
 						res.writeHead(200, {'Content-Type': 'image/' + suffix[suffix.length - 1]});
 						break;
+					case 'mp4':
+						res.setHeader('Content-Type', 'video/mp4');
+						res.writeHead(200, {'Content-Type': 'video/mp4'});
+						break;
 					default:
+						res.setHeader('Content-Type', 'text/' + suffix[suffix.length - 1]);
 						res.writeHead(200, {'Content-Type': 'text/' + suffix[suffix.length - 1]});
 				}
 				res.write(data);
@@ -46,6 +58,7 @@ app.use(async function(req,res){
 			}
 		});
 	}else{
+		console.log(q.pathname);
 		switch(q.pathname){
 			case '/':
 				res.writeHead(303, {'Location': './index.js'});
@@ -54,50 +67,68 @@ app.use(async function(req,res){
 			case '/index.js':
 				var data = {stats: {}};
 				
-				var fishSchema = require('./schemas/fish.js');
-				var obsSchema = require('./schemas/observation.js');
-				var recSchema = require('./schemas/recording.js');
-				var refSchema = require('./schemas/reference.js');
-				
-				var fishList = await recSchema.getHighlightList();
-				var highlighted = await fishSchema.getHighlightedSpecies(fishList);
-				data.highlighted = highlighted;
-				
-				var latestObsId = await obsSchema.getLatest();
-				var latestObs = await fishSchema.read(latestObsId);
-				var obsCount = await obsSchema.getCount();
-				data.stats.latestObs = latestObs;
-				data.stats.obsCount = obsCount;
-				
-				var refCount = await refSchema.getCount();
-				data.stats.refCount = refCount;
-				
-				var recCount = await recSchema.getCount();
-				var latestRec = await recSchema.getLatest();
-				data.stats.latestRec = latestRec;
-				data.stats.recCount = recCount;
+				var contentSchema = require('./schemas/content.js');
+				data.content = await contentSchema.read("Homepage");
 				
 				render('index.js',data,res);
 				break;
+
 			case '/about.js':
 				var data = {};
+				
+				var contentSchema = require('./schemas/content.js');
+				var versionSchema = require('./schemas/version.js');
+				
+				data.content = await contentSchema.read("About");
+				
+				var versions = await versionSchema.list();
+				var versionTable = {
+					id: "versions",
+					title: "Data and Website Version History",
+					data:{
+						headings:[
+							{id:"date",label:"Date",size:"col-2"},
+							{id:"number",label:"Version",size:"col-2"},
+							{id:"description",label:"Description",size:"col"}
+						],
+						rows:[]
+					}
+				};
+	
+				for(var i = 0; i < versions.length; i++){
+					var row = [];
+					row.push({id:"date",value:versions[i].date.toISOString().split('T')[0],size:"col-2"});
+					row.push({id:"number",value:versions[i].number,size:"col-2"});
+					row.push({id:"description",value:versions[i].description,size:"col",limit:125});
+					versionTable.data.rows.push(row);
+				}
+				
+				data.tables = [
+					{
+						type:"versions",
+						table:versionTable,
+						size:"auto",
+						search:false
+					}
+				];
+				
 				render('about.js',data,res);
-				break;
-			case '/how-to-cite.js':
-				var data = {};
-				render('how-to-cite.js',data,res);
 				break;
 			//search page for fish
 			case '/results-fish.js':
 				var fishSchema = require('./schemas/fish.js');
-				var data = {"q": {},"codelists": {},"page": 1};
-				data.codelists = await getCodeLists("fish");
-				
-				//if there is a get array, pull the values; store page value if present
+				var data = {"q": {},"codelists": {}};
+				data.codelists = await getCodeLists("results-fish");
+
+				//if there is a GET array, pull expected values
 				if(q.search){
-					var params = qs.parse(q.search.substr(1));
-					if(params["page"]){ data.page = params["page"]; }
+					var params = {};
+					var urlparams = qs.parse(q.search.substr(1));
+					for(item in urlparams){
+						params[item] = String(urlparams[item]);
+					}
 				}
+			
 				
 				//if a search was submitted, parse values, search for results and render
 				if(req.method === 'POST'){
@@ -106,70 +137,79 @@ app.use(async function(req,res){
 						for(var i = 0; i < selects.length; i++){
 							if(searchQuery[selects[i]] && !Array.isArray(searchQuery[selects[i]])){ searchQuery[selects[i]] = searchQuery[selects[i]].split(";"); }
 						}
-						//if multiple sort values ended up submitted (result of submitting sorts back to back), only keep the last value
-						if(Array.isArray(searchQuery.sort)){ searchQuery.sort = searchQuery.sort[searchQuery.sort.length - 1]; }
-						searchResults = await fishSchema.search(searchQuery,data.page);
+						searchResults = await fishSchema.search(searchQuery);
 						
 						data.q = searchQuery;
 						data.results = searchResults.results;
 						data.count = searchResults.count;
+						data.page = searchResults.page;
 						
 						render('results-fish.js',data,res);
 					});
 				//else search for results using blank or get array (breadcrumb searching) parameters and render
 				}else{
-					for(item in params){ if(item != "page"){ data.q[item] = decodeURI(params[item]); } }
-					searchResults = await fishSchema.search(params,data.page);
+					for(item in params){ data.q[item] = String(decodeURI(params[item])); }
+					searchResults = await fishSchema.search(params);
 					
 					data.results = searchResults.results;
 					data.count = searchResults.count;
+					data.page = searchResults.page;
 					
 					render('results-fish.js',data,res);
 				}
-				
 				break;
 			//single result page for fish
 			case '/fish.js':
-				var publicId = qs.parse(q.search.substr(1)).id;
+				var publicId = String(qs.parse(q.search.substr(1)).id);
 				var data = {};
 				
 				var fishSchema = require('./schemas/fish.js');
-				var id = await fishSchema.getId(publicId);
-				data.fish = await fishSchema.read(id);
+				data.fish = await fishSchema.read(publicId);
+				data.regions = await fishSchema.getRegions(publicId);
+				
+				var regionSchema = require('./schemas/region.js');
+				data.files = await regionSchema.list({type:"fao"});
 				
 				var obsSchema = require('./schemas/observation.js');
-				var references = await obsSchema.read({fishId:id});
+				var references = await obsSchema.read({'fish.publicId':publicId});
 				data.references = references.sort(function compare(a,b){ return a.reference.year < b.reference.year ? 1 : -1; });
 				
 				var recSchema = require('./schemas/recording.js');
-				var recordings = await recSchema.read({fish:id});
-				data.recordings = recordings;
+				data.recordings = await recSchema.read({'fish.publicId':publicId});
 				
 				render('fish.js',data,res);
 				break;
+			
 			//search page for recordings
 			case '/results-recordings.js':
 				var recSchema = require('./schemas/recording.js');
-				var data = {"q": {},"codelists": {},"page": 1,"sort":""};
-				data.codelists = await getCodeLists("recSearch");
+				var refSchema = require('./schemas/reference.js');
+				var data = {"q": {},"codelists": {}};
+				data.codelists = await getCodeLists("results-recordings");
 				
-				//if there is a get array, pull the values; store page value if present
+				//if there is a GET array, pull expected values
 				if(q.search){
-					var params = qs.parse(q.search.substr(1));
-					if(params["page"]){ data.page = params["page"]; }
+					var params = {};
+					var urlparams = qs.parse(q.search.substr(1));
+					for(item in urlparams){
+						switch(item){
+						// add cases here to allow GET-based searches
+							// case "item-name":
+ 							//	params["item-name"] = String(urlparams[item]);
+ 							//	break;
+						}
+					}
 				}
 				
 				//if a search was submitted, parse values, search for results and render
 				if(req.method === 'POST'){
-					collectRequestData(req, async function(searchQuery){
-						//if multiple sort values ended up submitted (result of submitting sorts back to back), only keep the last value
-						if(Array.isArray(searchQuery.sort)){ searchQuery.sort = searchQuery.sort[searchQuery.sort.length - 1]; }
-						if(searchQuery.sort){ data.sort = searchQuery.sort; }
+					collectRequestData(req, async function(searchQuery){						
 						searchResults = await recSchema.search(searchQuery,data.page);
 						
 						data.q = searchQuery;
 						data.results = searchResults.results;
 						data.count = searchResults.count;
+						data.page = searchResults.page;
 						
 						render('results-recordings.js',data,res);
 					});
@@ -180,6 +220,7 @@ app.use(async function(req,res){
 					
 					data.results = searchResults.results;
 					data.count = searchResults.count;
+					data.page = searchResults.page;
 					
 					render('results-recordings.js',data,res);
 				}
@@ -187,11 +228,10 @@ app.use(async function(req,res){
 			//single result page for recording
 			case '/recording.js':
 				var recSchema = require('./schemas/recording.js');
-				var publicId = qs.parse(q.search.substr(1)).id;
+				var publicId = String(qs.parse(q.search.substr(1)).id);
 				var data = {publicId: publicId};
 				
-				var id = await recSchema.getId(publicId);
-				recs = await recSchema.read({_id:id});
+				recs = await recSchema.read({publicId:publicId});
 				data.recording = recs[0];
 				
 				render('recording.js',data,res);
@@ -199,56 +239,62 @@ app.use(async function(req,res){
 			//search page for references
 			case '/results-references.js':
 				var refSchema = require('./schemas/reference.js');
-				var data = {"q": {},"codelists": {},"page": 1,"sort":""};
-				
-				var languages = await refSchema.getLanguages();
-				data.codelists.languages = {"ungrouped": languages };
+				var data = {"q": {"gray": "on"},"codelists": {}};
+				data.codelists = await getCodeLists("results-references");
 				data.yearRange = await refSchema.getYearRange();
 				
-				//if there is a get array, pull the values; store page value if present
+				//if there is a GET array, pull expected values
 				if(q.search){
-					var params = qs.parse(q.search.substr(1));
-					if(params["page"]){ data.page = params["page"]; }
+					var params = {};
+					var urlparams = qs.parse(q.search.substr(1));
+					for(item in urlparams){
+						switch(item){
+						// add cases here to allow GET-based searches
+							// case "item-name":
+ 							//	params["item-name"] = String(urlparams[item]);
+ 							//	break;
+						}
+					}
 				}
-				
+					
 				//if a search was submitted, parse values, search for results and render
 				if(req.method === 'POST'){
 					collectRequestData(req, async function(searchQuery){
-						if(Array.isArray(searchQuery.sort)){ searchQuery.sort = searchQuery.sort[searchQuery.sort.length - 1]; }
-						if(searchQuery.sort){ data.sort = searchQuery.sort; }
-						searchResults = await refSchema.search(searchQuery,data.page);
+						searchResults = await refSchema.search(searchQuery);
 						
 						data.q = searchQuery;
 						data.results = searchResults.results;
 						data.count = searchResults.count;
+						data.page = searchResults.page;
 						
 						render('results-references.js',data,res);
 					});
 				//else search for results using blank or get array (breadcrumb searching) parameters and render
 				}else{
-					for(item in params){ if(item != "page"){ data.q[item] = decodeURI(params[item]); } }
-					searchResults = await refSchema.search(params,data.page);
+					for(item in params){ data.q[item] = decodeURI(params[item]); }
+					searchResults = await refSchema.search(data.q);
 					
 					data.results = searchResults.results;
 					data.count = searchResults.count;
+					data.page = searchResults.page;
 					
 					render('results-references.js',data,res);
 				}
 				break;
 			//single result page for reference
 			case '/reference.js':
-				var publicId = qs.parse(q.search.substr(1)).id;
+				var publicId = String(qs.parse(q.search.substr(1)).id);
 				var data = {};
 				
 				var refSchema = require('./schemas/reference.js');
 				var recSchema = require('./schemas/recording.js');
-				var id = await refSchema.getId(publicId);
-				data.reference = await refSchema.read(id);
-				data.recordings = await recSchema.read({$or:[{citations:id},{'measurements.citation':id}]});
+
+				data.reference = await refSchema.read(publicId);
+				data.recordings = await recSchema.read({$or:[{'citations.publicId':data.reference.publicId},{'measurements.citation.publicId':data.reference.publicId}]});
 				
 				var obsSchema = require('./schemas/observation.js');
-				var fish = await obsSchema.read({refId:id});
-				data.fish = fish.sort(function compare(a,b){ return a.fish.scientific < b.fish.scientific ? -1 : 1; });
+				var fish = await obsSchema.read({'reference.publicId':publicId});
+				data.fish = fish.sort(function compare(a,b){ return a.fish.title < b.fish.title ? -1 : 1; });
 				
 				render('reference.js',data,res);
 				break;
@@ -259,30 +305,18 @@ app.use(async function(req,res){
 			case '/requestList':
 				if(req.method === 'POST') {
 					collectRequestData(req, async function(data){
-						var type = qs.parse(q.search.substr(1)).type;
-						var value = qs.parse(q.search.substr(1)).value;
-						var schema = require('./schemas/' + qs.parse(q.search.substr(1)).schema + '.js');
+						var type = String(qs.parse(q.search.substr(1)).type);
+						var value = String(qs.parse(q.search.substr(1)).value);
+						var split = Number(qs.parse(q.search.substr(1)).split) == 1 ? true : false;
+						var schema = require('./schemas/' + String(qs.parse(q.search.substr(1)).schema) + '.js');
 						if(schema && value){
-							var list = await schema.getList(type,value,data);
+					//		if(data){
+					//			var list = await schema.getTaxonomyList(type,value,data);
+					//		}else{
+								var list = await schema.getSelectList(type,value,split);
+					//		}
+							res.writeHead(200, {'Content-Type': 'text/javascript'});
 							res.end(JSON.stringify(list.sort()));
-						}else{
-							res.end();
-						}
-					});
-				}
-				break;
-			//returns the set of taxonomy fields for a given fish species that matches a provided (unique in system) value
-			//used to fill higher taxonomy values in the fish search form
-			case '/requestBackfill':
-				if(req.method === 'POST') {
-					collectRequestData(req, async function(){
-						var type = qs.parse(q.search.substr(1)).type;
-						var value = qs.parse(q.search.substr(1)).value;
-						//note: 'scientific' (combined genus and species values) is valid for unique search; genus and species names are reused and can't be searched independently
-						if(['order','family','scientific'].includes(type)){ var schema = require('./schemas/fish.js'); }
-						if(schema && value){
-							var obj = await schema.getBackfill(type,value);
-							res.end(JSON.stringify(obj));
 						}else{
 							res.end();
 						}
@@ -310,54 +344,86 @@ async function getCodeLists(type){
 	var termSchema = require('./schemas/term.js');
 
 	switch(type){
-		case 'fish':
+		case 'results-fish':
 			var lists = [
 				{
-					type:"region",
+					schema:"region",
+					request:"search",
+					type:"fao",
 					join:"fish",
-					lookup:"regions"
+					lookup:"regions",
+					name:"region"
 				},
 				{
+					schema:"term",
+					request:"search",
 					type:"climate",
 					join:"fish",
-					lookup:"climates"
+					lookup:"climates",
+					name:"climate"
 				},
 				{
+					schema:"term",
+					request:"search",
 					type:"water",
 					join:"fish",
-					lookup:"waters"
+					lookup:"waters",
+					name:"water"
 				},
 				{
+					schema:"term",
+					request:"search",
 					type:"source",
 					join:"observations",
-					lookup:"sources.source"
+					lookup:"sources.source",
+					name:"source"
 				}
 			];
-			data = await termSchema.getInUseLists(lists);
 			break;
-		case 'recSearch':
+		case 'results-references':
 			var lists = [
 				{
-					type:"region",
-					join:"fish",
-					lookup:"regions"
-				},
-				{
-					type:"noise",
-					join:"recordings",
-					lookup:"noises"
+					schema:"reference",
+					request:"form",
+					type:"language",
+					name:"languages"
 				}
 			];
-			data = await termSchema.getInUseLists(lists);
 			break;
-		case 'recForm':
-			var lists = ["noise"];
-			data = await termSchema.getFullLists(lists);
+		case 'results-recordings':
+			var lists = [
+				{
+					schema:"region",
+					request:"search",
+					type:"fao",
+					join:"fish",
+					lookup:"regions",
+					name:"region"
+				},
+				{
+					schema:"term",
+					request:"search",
+					type:"noise",
+					join:"recordings",
+					lookup:"noises",
+					name:"noise"
+				}
+			];
 			break;
 	}
 	
-	
+	if(lists){
+		for(var i = 0; i < lists.length; i++){
+			var schema = require('./schemas/' + lists[i].schema + '.js');
+			if(lists[i].request == "form"){
+				data[lists[i].name] = await schema.getFullList(lists[i]);
+			}else{
+				data[lists[i].name] = await schema.getInUseList(lists[i]);
+			}
+		}
+	}
 	return data;
+
 }
 
 // Helper function to collect and parse data from form submissions (search forms)

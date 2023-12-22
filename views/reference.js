@@ -1,13 +1,21 @@
-var tools = require('./tools/interfaceBuilderFunctions.js');
+var interfaceTools = require('./tools/interfaceBuilderFunctions.js');
+var formTools = require('./tools/formBuilderFunctions.js');
 
 //renders a single reference record page (citation information, related recordings, observation data fish-by-fish)
 exports.display = function(data){
 	var content = `<div id="reference" class="row g-2 p-3">
 		<div class="col-12"><h2 class="center">` + data.reference.title + `</h2></div>
-		<div id="noteBox" class="col-4 p-2 mx-3 my-0 collapse collapse-horizontal">
+		<div id="editorNotes" class="noteBox col-lg-4 col-12 p-2 mx-3 my-0 collapse collapse-horizontal">
 			<div class="row p-2">
-				<div class="col ps-4"><h3 id="noteTitle" class="center">Descriptive Quotes</h3></div>
-				<div class="col-2 mr-3"><button id="closeNotes" class="btn btn-sm btn-secondary p-0" data-bs-toggle="collapse" data-bs-target="#noteBox" aria-expanded="false" aria-controls="noteBox"><i class="fa fa-times-circle fa-2x"></i></button></div>
+				<div class="col ps-4"><h3 id="noteTitle" class="center"></h3></div>
+				<div class="col-2 me-3 right"><button id="closeNotes" class="btn btn-sm btn-secondary p-0" data-bs-toggle="collapse" data-bs-target="#editorNotes" aria-expanded="false" aria-controls="editorNotes"><i class="fa fa-times-circle fa-2x"></i></button></div>
+			</div>
+			<div class="col-12 p-2" id="textHolder"></div>
+		</div>
+		<div id="quoteNotes" class="noteBox col-lg-4 col-12 p-2 mx-3 my-0 collapse collapse-horizontal">
+			<div class="row p-2">
+				<div class="col ps-4"><h3 id="noteTitle" class="center"></h3></div>
+				<div class="col-2 me-3 right"><button id="closeNotes" class="btn btn-sm btn-secondary p-0" data-bs-toggle="collapse" data-bs-target="#quoteNotes" aria-expanded="false" aria-controls="quoteNotes"><i class="fa fa-times-circle fa-2x"></i></button></div>
 			</div>
 			<div class="col-12 p-2" id="textHolder"></div>
 		</div>
@@ -25,7 +33,7 @@ exports.display = function(data){
 						<select id="recordingInput" class="col-12 p-0 mb-2" name="id">
 							<option></option>`;
 						for(var i = 0; i < data.recordings.length; i++){
-							content += `<option value='` + data.recordings[i].publicId + `'>` + data.recordings[i].fish[0].title + ` - ` + tools.buildTextString(data.recordings[i].noises) + `</option>`;
+							content += `<option value='` + data.recordings[i].publicId + `'>` + data.recordings[i].fish.title + ` - ` + interfaceTools.buildTextString(data.recordings[i].noises) + `</option>`;
 						}
 						content += `</select>
 						<input type="submit" class="btn btn-md col-12" value="View">
@@ -43,8 +51,12 @@ exports.display = function(data){
 			var display = "d-block";
 			if(data.fish.length > 0){
 				if(data.fish.length > 1){
-					display = "d-none";
+					display = "hidden";
 					content += fishSelectorBuilder(data.fish);
+					content += `
+					<div id="loader" class="loader hidden mt-2 mx-auto">
+						<img src="./public/Loading.gif" class="loadingGif">
+					</div>`;
 				}
 				for(var i = 0; i < data.fish.length; i++){
 					content += fishInfoBuilder(data.fish[i],display)
@@ -76,7 +88,7 @@ function referenceInfoBuilder(data){
 		obj["No. of Pages"] = data.end;
 	}
 	
-	if(data.doi){ obj["DOI"] = data.doi; }
+	if(data.doi){ obj["DOI"] = `<a href="http://doi.org/` + data.doi + `">` + data.doi + `</a>`; }
 	if(data.issn){ obj["ISSN"] = data.issn; }
 	if(data.language){ obj["Language"] = data.language; }
 	
@@ -88,14 +100,19 @@ function referenceInfoBuilder(data){
 			<div class="col-lg-9 col-6 m-0">`;
 		if(Array.isArray(obj[item])){
 			for(var i = 0; i < obj[item].length; i++){
-				info += `<p class="tight">` + obj[item][i].last + `,`;
-				for(var j = 0; j < obj[item][i].first.length; j++){
-					info += ` ` + obj[item][i].first[j];
+				var name = obj[item][i].last;
+				if(obj[item][i].first && obj[item][i].first.length > 0){
+					name += `,`;
+					for(var j = 0; j < obj[item][i].first.length; j++){
+						name += ` ` + obj[item][i].first[j];
+					}
 				}
-				for(var j = 0; j < obj[item][i].middle.length; j++){
-					info += ` ` + obj[item][i].middle[j];
+				if(obj[item][i].middle && obj[item][i].middle.length > 0){
+					for(var j = 0; j < obj[item][i].middle.length; j++){
+						name += ` ` + obj[item][i].middle[j];
+					}
 				}
-				info += `</p>`;
+				info += `<p class="tight">` + name + `</p>`;
 			}
 		}else{
 			info += `<p class="tight">` + obj[item] + `</p>`;
@@ -109,10 +126,15 @@ function referenceInfoBuilder(data){
 
 //builds the select bar that controls which fish info is visible
 function fishSelectorBuilder(fish){
+	var params = {
+		buttonContainer: '<div class="btn-group w-100" />',
+		numberDisplayed: 1,
+		maxHeight: 200
+	};
 	var select = `<div class="row mb-3">
 		<div class="col-3 px-2"><p class="right tight">Select Fish:</p></div>
 		<div class="col-6 px-2">
-			<select class="select fullWidth" id="fishSpeciesSelector" onchange="displayFish(this.value)">
+			<select class="select fullWidth" id="fishSpeciesSelector" data-mdb-filter="true" onchange="displayFish(this.value)">
 				<option></option>`;
 				for(var i = 0; i < fish.length; i++){
 					select += `<option value="` + fish[i].fish.publicId + `">` + fish[i].fish.title + `</option>`;
@@ -120,7 +142,14 @@ function fishSelectorBuilder(fish){
 			select += `</select>
 		</div>
 		<script type="text/javascript">
-			$("#fishSpeciesSelector").chosen({disable_search_threshold:5});
+			$("#fishSpeciesSelector").chosen();
+			
+			$(document).ready(function(){
+				var params = new URLSearchParams(window.location.search);
+				if(params.get("fishId")){
+					displayFish(params.get("fishId"));
+				}
+			});
 		</script>
 	</div>`;
 	
@@ -163,7 +192,7 @@ function fishInfoBuilder(fish,display){
 			{label:"Sound Detected",detection:detection,values:[{"text":"Sound was not detected","symbol":"fa-times-circle"},{"text":"Sound was detected","symbol":"fa-check-circle"},{"text":"Sound was detected, but is doubted","symbol":"fa-question-circle"}]}
 		]},
 		{title: "Examination Types",fields:[
-			{label:"Physiological",detection:fish.physiological,values:[{"text":"Physiological examination was not performed","symbol":"fa-times-circle"},{"text":"Physiological examination was performed","symbol":"fa-check-circle"},{"text":"Physiological examination was performed, but is doubted","symbol":"fa-question-circle"}]},
+			{label:"Morphophysiological",detection:fish.physiological,values:[{"text":"Morphophysiological examination was not performed","symbol":"fa-times-circle"},{"text":"Morphophysiological examination was performed","symbol":"fa-check-circle"},{"text":"Morphophysiological examination was performed, but is doubted","symbol":"fa-question-circle"}]},
 			{label:"Auditory",detection:fish.audio,values:[{"text":"Auditory examination was not performed","symbol":"fa-times-circle"},{"text":"Auditory examination was performed","symbol":"fa-check-circle"}]},
 			{label:"Visual",detection:fish.visual,values:[{"text":"Visual examination was not performed","symbol":"fa-times-circle"},{"text":"Visual examination was performed","symbol":"fa-check-circle"}]}
 		]},
@@ -183,16 +212,29 @@ function fishInfoBuilder(fish,display){
 	
 	var info = `<div id="` + fish.fish.publicId + `" class="fishInfo ` + display + `">
 		<div class="row">
-			<div id="fishTitle" class="col-12"><a href="/fish.js?id=` + fish.fish.publicId + `"><h3 class="center">` + fish.fish.title + `</h3></a></div>
-			<div id="requiredInfo" class="col row justify-content-center align-content-start">
+			<div id="fishTitle" class="col-12"><h3 class="center"><a href="/fish.js?id=` + fish.fish.publicId + `">` + fish.fish.title + `</a></h3></div>`;
+			if(fish.altName && fish.altName == "Unavailable"){ 
+				info += `<p class="center small">The species name used by the author(s) needs to be verified and may differ.</p>`; 
+			}else if(fish.altName){
+				info += `<p class="center small">The species name used by the author(s) was <i>` + fish.altName + `</i>.</p>`;
+			}
+			info += `<div id="requiredInfo" class="col row justify-content-center align-content-start">
 				<h3 class="center">Description</h3>
 				<div class="col-auto">`;
+				if(fish.editorNotes){
+					info += `<div class="row my-2 center">
+						<div class="col-auto">
+							<div class="d-none noteContent">` + fish.editorNotes + `</div>
+							<button id="button-editorNotes" class="btn btn-sm" data-bs-toggle="collapse" data-bs-target="#editorNotes" aria-expanded="false" aria-controls="editorNotes" onclick="displayNotes(this,'Editor Notes')">View Editor Notes</button>
+						</div>
+					</div>`;
+				}
 					for(var i = 0; i < descriptionSections.length; i++){
 						info += `<div class="row my-2">
 							<div class="col-auto referenceInfo">
 								<p class="bold tight nowrap">` + descriptionSections[i].title + `</p>`;
 								for(var j = 0; j < descriptionSections[i].fields.length; j++){
-									info += tools.checkboxBuilder(descriptionSections[i].fields[j].label,descriptionSections[i].fields[j].detection,descriptionSections[i].fields[j].values,"indent");
+									info += interfaceTools.checklistBuilder(descriptionSections[i].fields[j].label,descriptionSections[i].fields[j].detection,descriptionSections[i].fields[j].values,"indent");
 								}
 							info += `</div>
 						</div>`;
@@ -220,7 +262,7 @@ function fishInfoBuilder(fish,display){
 						info += `<div class="row my-2 center">
 							<div class="col-auto">
 								<div class="d-none noteContent">` + quotes + `</div>
-								<button class="btn btn-sm" data-bs-toggle="collapse" data-bs-target="#noteBox" aria-expanded="false" aria-controls="noteBox" onclick="displayNotes(this)">View Descriptive Quotes</button>
+								<button id="button-quoteNotes" class="btn btn-sm" data-bs-toggle="collapse" data-bs-target="#quoteNotes" aria-expanded="false" aria-controls="quoteNotes" onclick="displayNotes(this,'Descriptive Quotes')">View Descriptive Quotes</button>
 							</div>
 						</div>`;
 					}
@@ -230,7 +272,7 @@ function fishInfoBuilder(fish,display){
 							info += `<div class="row justify-content-center my-2">
 								<div class="referenceInfo">
 									<p class="bold tight nowrap">` + additionalSections[i].title + `</p>`;
-									info += tools.listBuilder(additionalSections[i].list,additionalSections[i].key,"indent");
+									info += interfaceTools.listBuilder(additionalSections[i].list,additionalSections[i].key,"indent");
 								info += `</div>
 							</div>`;
 						}

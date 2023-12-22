@@ -3,75 +3,243 @@ var ObjectId = mongoose.Schema.Types.ObjectId;
 var Schema = mongoose.Schema;
 var db = require('./../dbconn.js');
 
-var referenceSchema = new Schema({
-	publicId: 	String,
-	extId:		String,
-	title:		String,
-	authors:	[{
-					first:	Array,
-					middle:	Array,
-					last:	String
-				}],
-	publication:String,
-	publisher:	String,
-	degree:		String,
-	institution:String,
-	year:		Number,
-	volume:		String,
-	issue:		String,
-	start:		String,
-	end:		String,
-	pages:		String,
-	doi:		String,
-	issn:		String,
-	language:	String,
-	gray:		Boolean,
-	other:		String,
-	refLong:	String,
-	refShort:	String
+var cleanerTools = require('./tools/dataCleaningFunctions.js');
+
+var options = { discriminatorKey: 'kind' };	//mongoose concept for having extendable schemas; subsets of reference will have 'kind' parameters that determine which type they are
+
+/*** BASE SCHEMA ***/
+
+var baseReferenceSchema = new Schema({
+	publicId: 									String,
+	extId:										String,
+	title:										String,
+	title_latinized:							String,
+	authors:									[{
+													first:			Array,
+													middle:			Array,
+													last:			String,
+													last_latinized:	String
+												}],
+	year:										Number,
+	language:									String,
+	other:										String,
+	combo_title__authors_last__doi: 			String,
+	combo_title__authors_last__doi_latinized: 	String,
+	refLong:									String,
+	refShort:									String,
+	type:										{type: String, default: "Unset"},
+	gray:										Boolean,
+	status:										{type: String}
 });
 
-var rec = mongoose.model('Reference',referenceSchema);
+var rec = mongoose.model('Reference',baseReferenceSchema);
 
-exports.record = rec;
+/*** ARTICLE SCHEMA ***/
 
-// given a system ID, returns an object with human readable values
+var articleSchema = new Schema(
+	{
+		publication:String,
+		volume:		String,
+		issue:		String,
+		start:		String,
+		end:		String,
+		doi:		String,
+		issn:		String,
+		type:		{type: String, default: "Article"},
+		gray:		{type: Boolean, default: false}
+	},
+	options
+);
+
+var Article = rec.discriminator('article',articleSchema);
+
+/*** PROCEEDING SCHEMA ***/
+
+var proceedingSchema = new Schema(
+	{
+		publication:String,
+		volume:		String,
+		issue:		String,
+		start:		String,
+		end:		String,
+		doi:		String,
+		issn:		String,
+		type:		{type: String, default: "Proceeding"},
+		gray:		{type: Boolean, default: true}
+	},
+	options
+);
+
+var Proceeding = rec.discriminator('proceeding',proceedingSchema);
+
+/*** BOOK SCHEMA ***/
+
+var bookSchema = new Schema(
+	{
+		location:	String,
+		publisher:	String,
+		editors:	[String],
+		translators:[String],
+		pages:		String,
+		isbn:		String,
+		type:		{type: String, default: "Book"},
+		gray:		{type: Boolean, default: false}
+	},
+	options
+);
+
+var Book = rec.discriminator('book',bookSchema);
+
+/*** CHAPTER SCHEMA ***/
+
+var chapterSchema = new Schema(
+	{
+		publication:String,
+		location:	String,
+		publisher:	String,
+		editors:	[String],
+		translators:[String],
+		start:		String,
+		end:		String,
+		isbn:		String,
+		type:		{type: String, default: "Chapter"},
+		gray:		{type: Boolean, default: false}
+	},
+	options
+);
+
+var Chapter = rec.discriminator('chapter',chapterSchema);
+
+/*** THESIS SCHEMA ***/
+
+var thesisSchema = new Schema(
+	{
+		level:		String,
+		location:	String,
+		institution:String,
+		pages:		String,
+		issn:		String,
+		type:		{type: String, default: "Thesis"},
+		gray:		{type: Boolean, default: true}
+	},
+	options
+);
+
+var Thesis = rec.discriminator('thesis',thesisSchema);
+
+/*** REPORT SCHEMA ***/
+
+var reportSchema = new Schema(
+	{
+		publisher:	String,
+		number:		String,
+		type:		{type: String, default: "Report"},
+		gray:		{type: Boolean, default: true}
+	},
+	options
+);
+
+var Report = rec.discriminator('report',reportSchema);
+
+/*** WEBSITE SCHEMA ***/
+
+var websiteSchema = new Schema(
+	{
+		url:		String,
+		website:	String,
+		editors:	[String],
+		type:		{type: String, default: "Website"},
+		gray:		{type: Boolean, default: true}
+		
+	},
+	options
+);
+
+var Website = rec.discriminator('website',websiteSchema);
+
+/*** OTHER SCHEMA ***/
+
+var otherSchema = new Schema(
+	{
+		publication:String,
+		location:	String,
+		publisher:	String,
+		editors:	[String],
+		translators:[String],
+		start:		String,
+		end:		String,
+		identifier:	String,
+		link:		String,
+		type:		{type: String, default: "Other"},
+		gray:		{type: Boolean, default: true}
+	},
+	options
+);
+
+var Other = rec.discriminator('other',otherSchema);
+
+
+
+// given a public ID, returns an object with human readable values
 // called by the reference route in app.js
-exports.read = async function(id){
-	var query = await rec.findOne({_id:id}).select('-_id -__v -extId').exec();
-	var info = {};
-	if(query){
-		Object.assign(info,query._doc);	
-	}
-	return info;
+exports.read = async function(publicId){
+	var query = await rec.aggregate()
+						.match({status:"Active",publicId:publicId})
+						.project({
+							_id:0,
+							status:0
+						});
+	
+	return query[0];
 }
 
 // given a search query object and search batch value (integer or null), returns an array of matching records in human-readable form
 // called by the results-reference route in app.js
-exports.search = async function(q,page){
-	var data = {};
+exports.search = async function(q){
+	var data = {gray:false};
 	var sort = {};
+	var page = 1;
 	
 	for(item in q){
 		if(q[item]){
 			//data cleaning: convert submitted search parameters into values system can use
 			switch(item){
+				case "page":
+					page = q[item];
+					break;
 				// sort values submitted as a string: field-to-be-sorted-on|{1 or -1}
 				case "sort":
-					var sortParts = q[item].split("|");
-					sort[sortParts[0]] = Number(sortParts[1]);
+					var sortSections = q[item].split("~");
+					for(sortItem in sortSections){
+						var sortParts = sortSections[sortItem].split("|");
+						sort[sortParts[0]] = Number(sortParts[1]);
+					}
 					break;
+				
+				//stop list to exclude worrisome injected search parameters
+				case "_id":
+				case "extId":
+				case "status":
+				case "internal":
+					break;
+				
 				// turn string into regular expression
 				case "title":
-					data[item] = new RegExp(q[item],"i");
+					data[item + '_latinized'] = new RegExp(cleanerTools.cleanSearchString(q[item]),"i");
 					break;
-				case "scientific":
-					data['fish.scientific'] = new RegExp(q[item],"i");
+				// target subfields on the fish junction object
+				case "common":
+					data['fish.' + item + '_latinized'] = new RegExp(cleanerTools.cleanSearchString(q[item]),"i");
 					break;
-				// wrap a group of fields that need to be searched against the same value in an array with an $or clause
-				// can only be done once; a second group search (e.g. searching valueX against title OR publication) would overwrite the first
+				case "genus__species":
+				case "superclass__className":
+				case "order__suborder":
+				case "family__subfamily":
+					data['fish.combo_' + item + '_latinized'] = new RegExp(cleanerTools.cleanSearchString(q[item]),"i");
+					break;
+				// target 'last' field in the authors array
 				case "authors":
-					data["$or"] = [{"authors.last": new RegExp(q[item],"i")},{"authors.first": new RegExp(q[item],"i")}];
+					data["authors.last_latinized"] = new RegExp(cleanerTools.cleanSearchString(q[item]),"i");
 					break;
 				// turn integer values into $gt or $lt clauses
 				case "startyear":
@@ -95,11 +263,12 @@ exports.search = async function(q,page){
 					}
 					data["language"] = {"$in": arr};
 					break;
-				// turn pseudo-boolean "on" values (from toggle switches on interface) into boolean
-				// approach needs to match context from interface; this is an "include" toggle without an exclusion value (i.e. "off" does not result in a FASLE value)
+				// if switch is "on", property is present; remove exclusion clause from base object
+				// all/partial filtering, not either/or
 				case "gray":
-					if(q[item] != "on"){ data[item] = true; }
+					delete data.gray;
 					break;
+
 				//straightforward key-value pair
 				default:
 					data[item] = q[item];
@@ -108,11 +277,14 @@ exports.search = async function(q,page){
 	}
 	
 	//adds defaults sorting so unsorted lists have consistent paging
-	if(!sort["_id"]){ sort["_id"] = -1; }
-	
+	if(Object.keys(sort).length === 0){ 
+		sort["_id"] = -1; 
+	}
+
 	//actual search query
 	//junctions references to fish via observations and recordings
 	var query = await rec.aggregate()
+							.match({status:{"$in":["Active"]}})
 							.lookup({ from: 'observations', localField: '_id', foreignField: 'refId', as: 'observations' })
 							.unwind('$observations')													//inner join (one or more observations should always exist)
 							.lookup({ from: 'fish', localField: 'observations.fishId', foreignField: '_id', as: 'fish' })
@@ -153,48 +325,80 @@ exports.search = async function(q,page){
   							}); 							
 
 	var count = query[0].total.length > 0 ? query[0].total[0].count : 0;
-	return {count: count, results: query[0].results};
+	return {count: count, results: query[0].results, page: page, sort: sort};
 }
 
-//given the public ID of a reference (used to create links, etc. in the user interface), returns the system ID for it
-//called by the reference route in app.js
-exports.getId = async function(publicId){
-	var query = await rec.findOne({publicId:publicId}).select('_id').exec();
-	return query;
-}
-
-//given an object with the title and publication name of a reference, returns the public ID for it
-//called by {carry over code; not yet in use}
-exports.getPublicId = async function(data){
-	var query = await rec.findOne({title: data.title, publication: data.publication}).select('publicId').exec();
-	return query.publicId;
-}
-
-//returns an integer counting the number of observed fish species in the database
-//used to populate site statistics
-//called by the index route in app.js
-exports.getCount = async function(){
-	var query = await rec.countDocuments({}).exec();
-	return query;
-}
-
-//returns an array containing concatenated strings of language values from records and the number of times that value has been used (e.g. "English (274)")
-//used to populate the language select list in the reference.js search form
-//called by the results-references route in app.js
-exports.getLanguages = async function(){
-	var query = await rec.aggregate().group({_id:"$language",count:{$sum:1}}).sort({"count":-1});
-	var arr = [];
-	for(var i = 0; i < query.length; i++){
-		arr.push(query[i]._id + " (" + query[i].count + ")");
+// given an array of term types, returns an object: {"term type": [{"term":term,"code":code}]} OR {"term type": {"group name": [{"term":term,"code":code}]}
+	// if codelist has a group structure in the database, this will be retained in the return array; otherwise only an array of term objects
+// used to populate dropdowns and suggestion lists for submission forms
+// called by getCodeLists function in app.js
+exports.getFullList = async function(list){
+	var results = [];
+	switch(list.type){
+		case "language":
+			var query = await rec.aggregate()
+								.match({status:"Active"})
+								.group({
+									_id:'$language',
+									count:{$sum:1}
+								})
+								.project({
+									_id:1,
+									count:1
+								})
+								.sort({"count":-1});
+			for(var i = 0; i < query.length; i++){
+				results.push(query[i]._id + " (" + query[i].count + ")");
+			}
+			break;
+		case "types":
+			var results = ["Article","Proceeding","Book","Chapter","Thesis","Report","Website","Other"];
+			break;
+		case "level":
+			var results = ["Undergraduate","Master's","PhD"];
+			break;
 	}
-	return arr;
+
+	return results;
 }
 
 //returns an array containing the earliest and latest year values from records
 //used to set the min/max range of the year input in the reference.js search form
 //called by the results-references route in app.js
 exports.getYearRange = async function(){
-	var query = await rec.aggregate().group({_id:null,min:{$min:"$year"},max:{$max:"$year"}});
+	var query = await rec.aggregate().match({status:{"$in":["Active"]},year:{$gt:0}}).group({_id:null,min:{$min:"$year"},max:{$max:"$year"}});
 	return [query[0].min,query[0].max];
+}
+
+/*** AJAX RESPONSE FUNCTIONS ***/
+
+//given a record field (e.g. authors) and a search value for that field, returns an array of records matching those values
+//used to populate select lists in search forms
+//called by the requestList route in app.js
+exports.getSelectList = async function(type,value,split){
+	//null values and empty strings (length = 0) were tested for and rejected upstream
+	if(value.length > 3){	//long strings (4+ characters) can be anywhere in the field
+		var regex = new RegExp(cleanerTools.cleanSearchString(value),'i');
+	}else if(!split){
+		var regex = new RegExp('^' + cleanerTools.cleanSearchString(value),'i');
+	}else{					//short strings have to be at the beginning of the field
+		var regex = new RegExp('\\b' + cleanerTools.cleanSearchString(value),'i');
+	}
+	
+	if(type == "authors"){
+		var query = await rec.find({status:{"$in":["Active"]},"authors.last_latinized": regex}).select({"authors.last":1,"authors.last_latinized":1}).exec();
+		
+		var arr = [];
+		for(var i = 0; i < query.length; i++){
+			for(var j = 0; j < query[i].authors.length; j++){
+				if(query[i].authors[j].last_latinized.match(regex)){ arr.push(query[i].authors[j].last); }
+			}
+		}
+		arr = arr.filter((value, index, array) => array.indexOf(value) === index);
+		return arr;
+	}else{
+		var query = await rec.find({status:{"$in":["Active"]},[`${type}` + "_latinized"]: regex}).distinct(type).exec();
+		return query;
+	}
 }
 
